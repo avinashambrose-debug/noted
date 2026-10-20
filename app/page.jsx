@@ -266,7 +266,21 @@ export default function Home() {
     const text = noteInput.trim();
     if (!text) return;
     const items = splitNote(text);
-    setProposals(items.map(parseNote));
+    const parsed = items.map(item => {
+      const p = parseNote(item);
+      // Pre-fill editable inputs from the parse result
+      if (p.when) {
+        const d = p.when;
+        const pad = (n) => String(n).padStart(2, '0');
+        p.dateInput = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        p.timeInput = p.dateOnly ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      } else {
+        p.dateInput = '';
+        p.timeInput = '';
+      }
+      return p;
+    });
+    setProposals(parsed);
     if (window.innerWidth < 600) {
       setTimeout(() => {
         detectedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -274,16 +288,33 @@ export default function Home() {
     }
   }, [noteInput]);
 
+  const updateProposal = (idx, field, value) => {
+    setProposals(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
+  };
+
   const confirmProposal = (idx) => {
     const p = proposals[idx];
     if (!p) return;
+    // Build the final 'when' from the edited inputs, not the original parser output
+    let whenIso = null;
+    let dateOnly = false;
+    if (p.dateInput) {
+      const [y, m, d] = p.dateInput.split('-').map(Number);
+      if (p.timeInput) {
+        const [hh, mm] = p.timeInput.split(':').map(Number);
+        whenIso = new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+      } else {
+        whenIso = new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+        dateOnly = true;
+      }
+    }
     const newReminder = {
       id: 'r-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       original: p.original,
       action: p.action,
       person: p.person,
-      when: p.when ? p.when.toISOString() : null,
-      dateOnly: !!p.dateOnly,
+      when: whenIso,
+      dateOnly,
       recurrence: p.recurrence,
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -384,26 +415,40 @@ export default function Home() {
             <button className="btn-link" onClick={discardAll}>Discard all</button>
           </div>
           <div className="detected">
-            {proposals.map((p, i) => {
-              const whenFmt = p.when ? formatWhen(p.when, p.dateOnly) : null;
-              return (
-                <div className="proposal" key={i}>
-                  <div className="proposal-text">{p.original}</div>
+            {proposals.map((p, i) => (
+              <div className="proposal" key={i}>
+                <div className="proposal-text">{p.original}</div>
+                <div className="proposal-fields">
+                  <label className="field">
+                    <span className="field-label">Date</span>
+                    <input
+                      type="date"
+                      value={p.dateInput || ''}
+                      onChange={(e) => updateProposal(i, 'dateInput', e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="field-label">Time</span>
+                    <input
+                      type="time"
+                      value={p.timeInput || ''}
+                      onChange={(e) => updateProposal(i, 'timeInput', e.target.value)}
+                    />
+                  </label>
+                </div>
+                {(p.recurrence || p.person || p.action) && (
                   <div className="proposal-tags">
-                    {whenFmt
-                      ? <span className="tag tag-when">{whenFmt}</span>
-                      : <span className="tag tag-missing">no time</span>}
                     {p.recurrence && <span className="tag tag-recur">{p.recurrence}</span>}
                     {p.person && <span className="tag tag-person">{p.person}</span>}
                     {p.action && <span className="tag">{p.action}</span>}
                   </div>
-                  <div className="proposal-actions">
-                    <button className="btn-ghost" onClick={() => discardProposal(i)}>Discard</button>
-                    <button className="btn-primary" onClick={() => confirmProposal(i)}>Confirm</button>
-                  </div>
+                )}
+                <div className="proposal-actions">
+                  <button className="btn-ghost" onClick={() => discardProposal(i)}>Discard</button>
+                  <button className="btn-primary" onClick={() => confirmProposal(i)}>Confirm</button>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </section>
       )}
