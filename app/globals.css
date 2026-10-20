@@ -260,6 +260,43 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1.45;
 }
 
+.proposal-fields {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 140px;
+}
+.field-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.field input {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 7px 10px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  color-scheme: inherit;
+  width: 100%;
+}
+.field input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .proposal-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .tag {
