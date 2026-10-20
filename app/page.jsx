@@ -69,8 +69,15 @@ function parseNote(raw) {
   }
 
   if (date) {
-    if (hour !== null) date.setHours(hour, minute, 0, 0);
-    else if (!hasPreciseTime) date.setHours(9, 0, 0, 0);
+    if (hour !== null) {
+      date.setHours(hour, minute, 0, 0);
+    } else if (hasPreciseTime) {
+      // 'in 2 hours' etc. already set a real time
+    } else {
+      // Date-only match ('friday', 'tomorrow') — mark as all-day instead of lying with 9am
+      date.setHours(0, 0, 0, 0);
+      result.dateOnly = true;
+    }
     result.when = date;
   } else if (hour !== null) {
     date = new Date(now);
@@ -115,7 +122,7 @@ function splitNote(text) {
     .filter(s => s.length > 0);
 }
 
-function formatWhen(d) {
+function formatWhen(d, dateOnly) {
   if (!d) return null;
   const date = d instanceof Date ? d : new Date(d);
   if (isNaN(date.getTime())) return null;
@@ -124,8 +131,6 @@ function formatWhen(d) {
   const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const diffDays = Math.round((target - today) / 86400000);
 
-  const timeFmt = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(/\s/g, '');
-
   let dayFmt;
   if (diffDays === 0) dayFmt = 'Today';
   else if (diffDays === 1) dayFmt = 'Tomorrow';
@@ -133,6 +138,9 @@ function formatWhen(d) {
   else if (diffDays > 1 && diffDays < 7) dayFmt = date.toLocaleDateString('en-US', { weekday: 'long' });
   else dayFmt = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 
+  if (dateOnly) return dayFmt + ' (no time)';
+
+  const timeFmt = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).toLowerCase().replace(/\s/g, '');
   return dayFmt + ', ' + timeFmt;
 }
 
@@ -275,6 +283,7 @@ export default function Home() {
       action: p.action,
       person: p.person,
       when: p.when ? p.when.toISOString() : null,
+      dateOnly: !!p.dateOnly,
       recurrence: p.recurrence,
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -376,7 +385,7 @@ export default function Home() {
           </div>
           <div className="detected">
             {proposals.map((p, i) => {
-              const whenFmt = p.when ? formatWhen(p.when) : null;
+              const whenFmt = p.when ? formatWhen(p.when, p.dateOnly) : null;
               return (
                 <div className="proposal" key={i}>
                   <div className="proposal-text">{p.original}</div>
@@ -412,7 +421,7 @@ export default function Home() {
           ) : (
             <div className="reminders">
               {sorted.map(r => {
-                const whenFmt = r.when ? formatWhen(r.when) : null;
+                const whenFmt = r.when ? formatWhen(r.when, r.dateOnly) : null;
                 return (
                   <div className={'reminder' + (r.status === 'done' ? ' done' : '')} key={r.id}>
                     <div className="reminder-body">
