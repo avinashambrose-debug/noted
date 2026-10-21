@@ -151,29 +151,9 @@ function formatWhen(d, dateOnly) {
 const STORAGE_KEY = 'noted_reminders_v1';
 const THEME_KEY = 'noted_theme';
 
-function makeSeed() {
-  const t1 = new Date();
-  t1.setDate(t1.getDate() + 1);
-  t1.setHours(10, 0, 0, 0);
-  return [
-    {
-      id: 'seed-1',
-      original: 'Call the vendor about the invoice',
-      action: 'call', person: null,
-      when: t1.toISOString(),
-      recurrence: null, status: 'pending', isExample: true,
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: 'seed-2',
-      original: 'Send bank statement to accounts',
-      action: 'send', person: null,
-      when: null,
-      recurrence: 'Month-end', status: 'pending', isExample: true,
-      createdAt: new Date().toISOString(),
-    },
-  ];
-}
+// Seed data removed — users were confusing examples with real reminders.
+// The "What the parser understands" section at the bottom carries example input,
+// which is the better place for them (it's labelled as a learning aid, not state).
 
 const EXAMPLES = [
   { text: 'Call the vendor tomorrow 10am about the invoice', trigger: 'tomorrow 10am', pre: 'Call the vendor ', post: ' about the invoice' },
@@ -205,16 +185,13 @@ export default function Home() {
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          setReminders(parsed);
-        } else {
-          const seed = makeSeed();
-          setReminders(seed);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
+          // Strip out any leftover example seeds from older versions
+          const cleaned = parsed.filter(r => !r.isExample);
+          setReminders(cleaned);
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+          }
         }
-      } else {
-        const seed = makeSeed();
-        setReminders(seed);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(seed));
       }
       const t = localStorage.getItem(THEME_KEY);
       if (t === 'dark' || t === 'light') {
