@@ -170,12 +170,11 @@ const EXAMPLES = [
 
 export default function Home() {
   const [noteInput, setNoteInput] = useState('');
-  const [proposals, setProposals] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [mounted, setMounted] = useState(false);
   const [themeLabel, setThemeLabel] = useState('Theme');
   const [modKey, setModKey] = useState('Ctrl');
-  const detectedRef = useRef(null);
+  const [justAddedIds, setJustAddedIds] = useState([]);
   const textareaRef = useRef(null);
 
   // Load on mount
@@ -239,79 +238,59 @@ export default function Home() {
     updateThemeLabel();
   };
 
+  const pad = (n) => String(n).padStart(2, '0');
+
   const capture = useCallback(() => {
     const text = noteInput.trim();
     if (!text) return;
     const items = splitNote(text);
-    const parsed = items.map(item => {
+    const newReminders = items.map((item, idx) => {
       const p = parseNote(item);
-      // Pre-fill editable inputs from the parse result
-      if (p.when) {
-        const d = p.when;
-        const pad = (n) => String(n).padStart(2, '0');
-        p.dateInput = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-        p.timeInput = p.dateOnly ? '' : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-      } else {
-        p.dateInput = '';
-        p.timeInput = '';
-      }
-      return p;
+      const d = p.when;
+      return {
+        id: 'r-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 5),
+        original: p.original,
+        action: p.action,
+        person: p.person,
+        when: d ? d.toISOString() : null,
+        dateInput: d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '',
+        timeInput: (d && !p.dateOnly) ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '',
+        dateOnly: !!p.dateOnly,
+        recurrence: p.recurrence,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
     });
-    setProposals(parsed);
-    if (window.innerWidth < 600) {
-      setTimeout(() => {
-        detectedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 50);
-    }
+    setReminders(prev => [...prev, ...newReminders]);
+    setJustAddedIds(newReminders.map(r => r.id));
+    setNoteInput('');
+    // Fade the "just saved" highlight after a moment
+    setTimeout(() => setJustAddedIds([]), 2500);
   }, [noteInput]);
 
-  const updateProposal = (idx, field, value) => {
-    setProposals(prev => prev.map((p, i) => i === idx ? { ...p, [field]: value } : p));
-  };
-
-  const confirmProposal = (idx) => {
-    const p = proposals[idx];
-    if (!p) return;
-    // Build the final 'when' from the edited inputs, not the original parser output
-    let whenIso = null;
-    let dateOnly = false;
-    if (p.dateInput) {
-      const [y, m, d] = p.dateInput.split('-').map(Number);
-      if (p.timeInput) {
-        const [hh, mm] = p.timeInput.split(':').map(Number);
-        whenIso = new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
-      } else {
-        whenIso = new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
-        dateOnly = true;
+  const updateReminder = (id, field, value) => {
+    setReminders(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const next = { ...r, [field]: value };
+      // Rebuild `when` + `dateOnly` whenever date or time changes
+      if (field === 'dateInput' || field === 'timeInput') {
+        if (next.dateInput) {
+          const [y, m, d] = next.dateInput.split('-').map(Number);
+          if (next.timeInput) {
+            const [hh, mm] = next.timeInput.split(':').map(Number);
+            next.when = new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+            next.dateOnly = false;
+          } else {
+            next.when = new Date(y, m - 1, d, 0, 0, 0, 0).toISOString();
+            next.dateOnly = true;
+          }
+        } else {
+          next.when = null;
+          next.dateOnly = false;
+        }
       }
-    }
-    const newReminder = {
-      id: 'r-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7),
-      original: p.original,
-      action: p.action,
-      person: p.person,
-      when: whenIso,
-      dateOnly,
-      recurrence: p.recurrence,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-    setReminders(prev => [...prev, newReminder]);
-    const next = proposals.filter((_, i) => i !== idx);
-    setProposals(next);
-    if (next.length === 0) setNoteInput('');
-  };
-
-  const discardProposal = (idx) => {
-    const next = proposals.filter((_, i) => i !== idx);
-    setProposals(next);
-    if (next.length === 0) setNoteInput('');
-  };
-
-  const discardAll = () => {
-    setProposals([]);
-    setNoteInput('');
-    textareaRef.current?.focus();
+      return next;
+    }));
   };
 
   const toggleReminder = (id) => {
@@ -385,51 +364,6 @@ export default function Home() {
         </div>
       </section>
 
-      {proposals.length > 0 && (
-        <section ref={detectedRef}>
-          <div className="section-header">
-            <h2>Detected</h2>
-            <button className="btn-link" onClick={discardAll}>Discard all</button>
-          </div>
-          <div className="detected">
-            {proposals.map((p, i) => (
-              <div className="proposal" key={i}>
-                <div className="proposal-text">{p.original}</div>
-                <div className="proposal-fields">
-                  <label className="field">
-                    <span className="field-label">Date</span>
-                    <input
-                      type="date"
-                      value={p.dateInput || ''}
-                      onChange={(e) => updateProposal(i, 'dateInput', e.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span className="field-label">Time</span>
-                    <input
-                      type="time"
-                      value={p.timeInput || ''}
-                      onChange={(e) => updateProposal(i, 'timeInput', e.target.value)}
-                    />
-                  </label>
-                </div>
-                {(p.recurrence || p.person || p.action) && (
-                  <div className="proposal-tags">
-                    {p.recurrence && <span className="tag tag-recur">{p.recurrence}</span>}
-                    {p.person && <span className="tag tag-person">{p.person}</span>}
-                    {p.action && <span className="tag">{p.action}</span>}
-                  </div>
-                )}
-                <div className="proposal-actions">
-                  <button className="btn-ghost" onClick={() => discardProposal(i)}>Discard</button>
-                  <button className="btn-primary" onClick={() => confirmProposal(i)}>Confirm</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
       <section>
         <div className="section-header">
           <h2>Reminders</h2>
@@ -443,17 +377,31 @@ export default function Home() {
           ) : (
             <div className="reminders">
               {sorted.map(r => {
-                const whenFmt = r.when ? formatWhen(r.when, r.dateOnly) : null;
+                const justAdded = justAddedIds.includes(r.id);
                 return (
-                  <div className={'reminder' + (r.status === 'done' ? ' done' : '')} key={r.id}>
+                  <div
+                    className={'reminder' + (r.status === 'done' ? ' done' : '') + (justAdded ? ' just-added' : '')}
+                    key={r.id}
+                  >
                     <div className="reminder-body">
                       <div className="reminder-text">{r.original}</div>
-                      <div className="reminder-meta">
-                        {r.isExample && <span className="example-tag">example</span>}
-                        {whenFmt && <span className="when">{whenFmt}</span>}
-                        {r.recurrence && <span>↻ {r.recurrence}</span>}
-                        {r.person && <span>@{r.person}</span>}
-                        {!whenFmt && !r.recurrence && !r.isExample && <span>no schedule</span>}
+                      <div className="reminder-fields">
+                        <input
+                          type="date"
+                          value={r.dateInput || ''}
+                          onChange={(e) => updateReminder(r.id, 'dateInput', e.target.value)}
+                          aria-label="Date"
+                          disabled={r.status === 'done'}
+                        />
+                        <input
+                          type="time"
+                          value={r.timeInput || ''}
+                          onChange={(e) => updateReminder(r.id, 'timeInput', e.target.value)}
+                          aria-label="Time"
+                          disabled={r.status === 'done'}
+                        />
+                        {r.recurrence && <span className="chip chip-recur">↻ {r.recurrence}</span>}
+                        {r.person && <span className="chip chip-person">@{r.person}</span>}
                       </div>
                     </div>
                     <div className="reminder-actions">
