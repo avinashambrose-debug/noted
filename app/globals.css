@@ -324,6 +324,74 @@ button { font-family: inherit; cursor: pointer; }
 
 .proposal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reminder-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reminder-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.group-label {
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0 0 4px 0;
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.group-count {
+  font-size: 12px;
+  color: var(--ink-subtle);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.tone-warning .group-label { color: var(--warning); }
+.tone-accent .group-label { color: var(--accent-ink); }
+
+.reminder-text-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 3px 7px;
+  margin: -3px -7px;
+  font-size: 14.5px;
+  color: var(--ink);
+  font-family: inherit;
+  line-height: 1.4;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.reminder-text-input:hover:not(:disabled) { border-color: var(--border); }
+.reminder-text-input:focus {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.reminder-text-input:disabled {
+  color: var(--ink-subtle);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
 .reminders { display: flex; flex-direction: column; }
 
 .reminder {
@@ -346,12 +414,7 @@ button { font-family: inherit; cursor: pointer; }
 
 .reminder-body { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 
-.reminder-text {
-  font-size: 14.5px;
-  color: var(--ink);
-  line-height: 1.4;
-  word-break: break-word;
-}
+/* .reminder-text replaced by .reminder-text-input (editable). */
 
 .reminder-fields {
   display: flex;
@@ -412,12 +475,7 @@ button { font-family: inherit; cursor: pointer; }
 .icon-btn:hover { background: var(--surface); color: var(--ink); }
 .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-.reminder.done .reminder-text {
-  color: var(--ink-subtle);
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-}
-.reminder.done .reminder-meta .when { color: var(--ink-subtle); font-weight: 400; }
+/* Done styling is now applied directly to the disabled text input. */
 
 .empty {
   padding: 28px 16px;
