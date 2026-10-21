@@ -481,7 +481,7 @@ export default function Home() {
               {pendingSections.map(s => s.items.length > 0 && (
                 <div className={'reminder-group tone-' + (s.tone || 'neutral')} key={s.key}>
                   <h3 className="group-label">
-                    {s.label}
+                    <span>{s.label}</span>
                     <span className="group-count">{s.items.length}</span>
                   </h3>
                   <div className="reminders">
@@ -492,7 +492,7 @@ export default function Home() {
               {showDone && groups.done.length > 0 && (
                 <div className="reminder-group tone-neutral" key="done">
                   <h3 className="group-label">
-                    Completed
+                    <span>Completed</span>
                     <span className="group-count">{groups.done.length}</span>
                   </h3>
                   <div className="reminders">
