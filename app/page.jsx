@@ -168,6 +168,42 @@ const EXAMPLES = [
 /* Component                                                                   */
 /* -------------------------------------------------------------------------- */
 
+// --- Grouping ---
+function groupReminders(list) {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const tomorrowStart = todayStart + 86400000;
+  const weekEnd = todayStart + 7 * 86400000;
+
+  const groups = {
+    overdue: [], today: [], tomorrow: [], thisWeek: [], later: [], noDate: [], done: [],
+  };
+
+  for (const r of list) {
+    if (r.status === 'done') { groups.done.push(r); continue; }
+    if (!r.when) { groups.noDate.push(r); continue; }
+    const whenDate = new Date(r.when);
+    const dayStart = new Date(whenDate.getFullYear(), whenDate.getMonth(), whenDate.getDate()).getTime();
+    // "Overdue" means a prior day. Today-earlier still shows in Today with a stale flag.
+    if (dayStart < todayStart) { groups.overdue.push(r); continue; }
+    if (dayStart === todayStart) { groups.today.push(r); continue; }
+    if (dayStart === tomorrowStart) { groups.tomorrow.push(r); continue; }
+    if (dayStart < weekEnd) { groups.thisWeek.push(r); continue; }
+    groups.later.push(r);
+  }
+
+  const sortByWhen = (a, b) => {
+    if (!a.when && !b.when) return (a.createdAt || '').localeCompare(b.createdAt || '');
+    if (!a.when) return 1;
+    if (!b.when) return -1;
+    return new Date(a.when) - new Date(b.when);
+  };
+  Object.keys(groups).forEach(k => groups[k].sort(sortByWhen));
+  // Done list reads nicest in reverse chronological order
+  groups.done.reverse();
+  return groups;
+}
+
 export default function Home() {
   const [noteInput, setNoteInput] = useState('');
   const [reminders, setReminders] = useState([]);
@@ -175,6 +211,7 @@ export default function Home() {
   const [themeLabel, setThemeLabel] = useState('Theme');
   const [modKey, setModKey] = useState('Ctrl');
   const [justAddedIds, setJustAddedIds] = useState([]);
+  const [showDone, setShowDone] = useState(false);
   const textareaRef = useRef(null);
 
   // Load on mount
@@ -315,15 +352,73 @@ export default function Home() {
     textareaRef.current?.focus();
   };
 
-  // Sorted reminders
-  const sorted = [...reminders].sort((a, b) => {
-    if (a.status === 'done' && b.status !== 'done') return 1;
-    if (b.status === 'done' && a.status !== 'done') return -1;
-    if (a.when && b.when) return new Date(a.when) - new Date(b.when);
-    if (a.when && !b.when) return -1;
-    if (!a.when && b.when) return 1;
-    return (a.createdAt || '').localeCompare(b.createdAt || '');
-  });
+  // Grouped reminders
+  const groups = groupReminders(reminders);
+  const pendingSections = [
+    { key: 'overdue', label: 'Overdue', items: groups.overdue, tone: 'warning' },
+    { key: 'today', label: 'Today', items: groups.today, tone: 'accent' },
+    { key: 'tomorrow', label: 'Tomorrow', items: groups.tomorrow },
+    { key: 'thisWeek', label: 'This week', items: groups.thisWeek },
+    { key: 'later', label: 'Later', items: groups.later },
+    { key: 'noDate', label: 'No date', items: groups.noDate },
+  ];
+
+  const renderReminderRow = (r) => {
+    const justAdded = justAddedIds.includes(r.id);
+    return (
+      <div
+        className={'reminder' + (r.status === 'done' ? ' done' : '') + (justAdded ? ' just-added' : '')}
+        key={r.id}
+      >
+        <div className="reminder-body">
+          <input
+            className="reminder-text-input"
+            type="text"
+            value={r.original}
+            onChange={(e) => updateReminder(r.id, 'original', e.target.value)}
+            disabled={r.status === 'done'}
+            aria-label="Reminder text"
+          />
+          <div className="reminder-fields">
+            <input
+              type="date"
+              value={r.dateInput || ''}
+              onChange={(e) => updateReminder(r.id, 'dateInput', e.target.value)}
+              aria-label="Date"
+              disabled={r.status === 'done'}
+            />
+            <input
+              type="time"
+              value={r.timeInput || ''}
+              onChange={(e) => updateReminder(r.id, 'timeInput', e.target.value)}
+              aria-label="Time"
+              disabled={r.status === 'done'}
+            />
+            {r.recurrence && <span className="chip chip-recur">↻ {r.recurrence}</span>}
+            {r.person && <span className="chip chip-person">@{r.person}</span>}
+          </div>
+        </div>
+        <div className="reminder-actions">
+          <button
+            className="icon-btn"
+            onClick={() => toggleReminder(r.id)}
+            aria-label={r.status === 'done' ? 'Mark pending' : 'Mark done'}
+            title={r.status === 'done' ? 'Mark pending' : 'Mark done'}
+          >
+            {r.status === 'done' ? '↺' : '✓'}
+          </button>
+          <button
+            className="icon-btn"
+            onClick={() => deleteReminder(r.id)}
+            aria-label="Delete"
+            title="Delete"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="page">
@@ -367,7 +462,14 @@ export default function Home() {
       <section>
         <div className="section-header">
           <h2>Reminders</h2>
-          <span className="count">{mounted ? reminders.length : 0}</span>
+          <div className="section-actions">
+            <span className="count">{mounted ? reminders.length : 0}</span>
+            {mounted && groups.done.length > 0 && (
+              <button className="btn-link" onClick={() => setShowDone(v => !v)}>
+                {showDone ? 'Hide completed' : `Show ${groups.done.length} completed`}
+              </button>
+            )}
+          </div>
         </div>
         <div>
           {!mounted ? (
@@ -375,56 +477,29 @@ export default function Home() {
           ) : reminders.length === 0 ? (
             <div className="empty">Nothing saved yet. Jot a note above and press Capture.</div>
           ) : (
-            <div className="reminders">
-              {sorted.map(r => {
-                const justAdded = justAddedIds.includes(r.id);
-                return (
-                  <div
-                    className={'reminder' + (r.status === 'done' ? ' done' : '') + (justAdded ? ' just-added' : '')}
-                    key={r.id}
-                  >
-                    <div className="reminder-body">
-                      <div className="reminder-text">{r.original}</div>
-                      <div className="reminder-fields">
-                        <input
-                          type="date"
-                          value={r.dateInput || ''}
-                          onChange={(e) => updateReminder(r.id, 'dateInput', e.target.value)}
-                          aria-label="Date"
-                          disabled={r.status === 'done'}
-                        />
-                        <input
-                          type="time"
-                          value={r.timeInput || ''}
-                          onChange={(e) => updateReminder(r.id, 'timeInput', e.target.value)}
-                          aria-label="Time"
-                          disabled={r.status === 'done'}
-                        />
-                        {r.recurrence && <span className="chip chip-recur">↻ {r.recurrence}</span>}
-                        {r.person && <span className="chip chip-person">@{r.person}</span>}
-                      </div>
-                    </div>
-                    <div className="reminder-actions">
-                      <button
-                        className="icon-btn"
-                        onClick={() => toggleReminder(r.id)}
-                        aria-label={r.status === 'done' ? 'Mark pending' : 'Mark done'}
-                        title={r.status === 'done' ? 'Mark pending' : 'Mark done'}
-                      >
-                        {r.status === 'done' ? '↺' : '✓'}
-                      </button>
-                      <button
-                        className="icon-btn"
-                        onClick={() => deleteReminder(r.id)}
-                        aria-label="Delete"
-                        title="Delete"
-                      >
-                        ×
-                      </button>
-                    </div>
+            <div className="reminder-groups">
+              {pendingSections.map(s => s.items.length > 0 && (
+                <div className={'reminder-group tone-' + (s.tone || 'neutral')} key={s.key}>
+                  <h3 className="group-label">
+                    {s.label}
+                    <span className="group-count">{s.items.length}</span>
+                  </h3>
+                  <div className="reminders">
+                    {s.items.map(r => renderReminderRow(r))}
                   </div>
-                );
-              })}
+                </div>
+              ))}
+              {showDone && groups.done.length > 0 && (
+                <div className="reminder-group tone-neutral" key="done">
+                  <h3 className="group-label">
+                    Completed
+                    <span className="group-count">{groups.done.length}</span>
+                  </h3>
+                  <div className="reminders">
+                    {groups.done.map(r => renderReminderRow(r))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
