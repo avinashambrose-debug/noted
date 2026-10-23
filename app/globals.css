@@ -394,6 +394,212 @@ button { font-family: inherit; cursor: pointer; }
 
 .reminders { display: flex; flex-direction: column; }
 
+/* ---------- View toggle ---------- */
+
+.view-toggle {
+  display: inline-flex;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+}
+.view-toggle-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ink-muted);
+  padding: 4px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.view-toggle-btn:hover { color: var(--ink); }
+.view-toggle-btn.active {
+  background: var(--accent);
+  color: var(--btn-text);
+}
+.view-toggle-btn.active:hover { color: var(--btn-text); }
+
+/* ---------- Calendar ---------- */
+
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.calendar-title {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  margin: 0;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  flex: 1;
+  min-width: 0;
+}
+.today-btn {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.calendar-note {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: 0;
+  padding: 6px 10px;
+  background: var(--surface);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 4px;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.calendar-weekday {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-subtle);
+  text-align: center;
+  padding: 4px 2px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cal-cell {
+  min-height: 96px;
+  background: var(--surface);
+  padding: 4px 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+.cal-cell.cal-out {
+  background: var(--surface-raised);
+  opacity: 0.55;
+}
+.cal-cell.cal-overdue { background: var(--warning-soft); }
+.cal-cell.cal-overdue .cal-day { color: var(--warning); font-weight: 600; }
+
+.cal-day {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 4px;
+  line-height: 1;
+}
+.cal-cell.cal-today .cal-day {
+  background: var(--accent);
+  color: var(--btn-text);
+  border-radius: 10px;
+  padding: 3px 7px;
+  align-self: flex-start;
+  font-weight: 600;
+}
+
+.cal-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cal-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border: 0;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  transition: filter 0.1s;
+}
+.cal-item:hover { filter: brightness(0.95); }
+.cal-item.cal-item-done {
+  background: var(--surface-raised);
+  color: var(--ink-subtle);
+  text-decoration: line-through;
+}
+.cal-cell.cal-overdue .cal-item {
+  background: #fff;
+  color: var(--warning);
+}
+:root[data-theme="dark"] .cal-cell.cal-overdue .cal-item,
+.cal-cell.cal-overdue .cal-item {
+  /* dark mode uses tokens */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .cal-cell.cal-overdue .cal-item {
+    background: var(--surface);
+    color: var(--warning);
+  }
+}
+:root[data-theme="dark"] .cal-cell.cal-overdue .cal-item {
+  background: var(--surface);
+  color: var(--warning);
+}
+
+.cal-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.cal-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+}
+.cal-more {
+  font-size: 10px;
+  color: var(--ink-subtle);
+  padding: 1px 5px;
+  font-weight: 500;
+}
+
+@media (max-width: 560px) {
+  .cal-cell { min-height: 64px; padding: 3px 2px; gap: 2px; }
+  .cal-day { font-size: 11px; padding: 1px 3px; }
+  .cal-cell.cal-today .cal-day { padding: 2px 5px; }
+  .calendar-title { font-size: 17px; }
+  .cal-time { display: none; }
+  .cal-text { font-size: 10px; }
+  .cal-item { padding: 1px 3px; }
+}
+
 .reminder {
   display: grid;
   grid-template-columns: 1fr auto;
