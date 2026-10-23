@@ -204,6 +204,45 @@ function groupReminders(list) {
   return groups;
 }
 
+// Build the 6-week grid of Date objects for a given month, starting Sunday
+function getCalendarCells(monthDate) {
+  const year = monthDate.getFullYear();
+  const month = monthDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startWeekday = firstDay.getDay();
+  const startDate = new Date(year, month, 1 - startWeekday);
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    cells.push(d);
+  }
+  // Trim the trailing all-next-month row if present
+  if (cells[35] && cells[35].getMonth() !== month) cells.splice(35, 7);
+  return cells;
+}
+
+function groupRemindersByDay(list) {
+  const map = new Map();
+  for (const r of list) {
+    if (!r.when) continue;
+    const d = new Date(r.when);
+    const key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(r);
+  }
+  for (const items of map.values()) items.sort((a, b) => new Date(a.when) - new Date(b.when));
+  return map;
+}
+
+function formatTimeShort(d) {
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const period = h >= 12 ? 'p' : 'a';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return h12 + (m ? ':' + String(m).padStart(2, '0') : '') + period;
+}
+
 export default function Home() {
   const [noteInput, setNoteInput] = useState('');
   const [reminders, setReminders] = useState([]);
@@ -212,6 +251,11 @@ export default function Home() {
   const [modKey, setModKey] = useState('Ctrl');
   const [justAddedIds, setJustAddedIds] = useState([]);
   const [showDone, setShowDone] = useState(false);
+  const [viewMode, setViewMode] = useState('list');
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const textareaRef = useRef(null);
 
   // Load on mount
@@ -363,10 +407,108 @@ export default function Home() {
     { key: 'noDate', label: 'No date', items: groups.noDate },
   ];
 
+  const jumpToReminder = (id) => {
+    setViewMode('list');
+    setTimeout(() => {
+      const el = document.getElementById('reminder-' + id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setJustAddedIds([id]);
+        setTimeout(() => setJustAddedIds([]), 2500);
+      }
+    }, 50);
+  };
+
+  const prevMonth = () => {
+    setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+  const nextMonth = () => {
+    setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+  const jumpToToday = () => {
+    const d = new Date();
+    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+  };
+
+  const renderCalendar = () => {
+    const cells = getCalendarCells(calendarMonth);
+    const dayMap = groupRemindersByDay(reminders);
+    const now = new Date();
+    const todayKey = now.getFullYear() + '-' + now.getMonth() + '-' + now.getDate();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const noDateCount = reminders.filter(r => !r.when && r.status !== 'done').length;
+
+    return (
+      <div className="calendar">
+        <div className="calendar-nav">
+          <button className="icon-btn" onClick={prevMonth} aria-label="Previous month" title="Previous month">‹</button>
+          <h3 className="calendar-title">
+            {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </h3>
+          <button className="icon-btn" onClick={nextMonth} aria-label="Next month" title="Next month">›</button>
+          <button className="btn-ghost today-btn" onClick={jumpToToday}>Today</button>
+        </div>
+        {noDateCount > 0 && (
+          <p className="calendar-note">
+            {noDateCount} reminder{noDateCount === 1 ? '' : 's'} with no date — switch to List to see {noDateCount === 1 ? 'it' : 'them'}.
+          </p>
+        )}
+        <div className="calendar-weekdays">
+          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+            <div key={d} className="calendar-weekday">{d}</div>
+          ))}
+        </div>
+        <div className="calendar-grid">
+          {cells.map(d => {
+            const key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+            const items = dayMap.get(key) || [];
+            const inMonth = d.getMonth() === calendarMonth.getMonth();
+            const isToday = key === todayKey;
+            const isPast = d < todayStart;
+            const hasOverduePending = isPast && items.some(r => r.status === 'pending');
+            return (
+              <div
+                key={key}
+                className={
+                  'cal-cell'
+                  + (inMonth ? '' : ' cal-out')
+                  + (isToday ? ' cal-today' : '')
+                  + (hasOverduePending ? ' cal-overdue' : '')
+                }
+              >
+                <div className="cal-day">{d.getDate()}</div>
+                <div className="cal-items">
+                  {items.slice(0, 3).map(r => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      className={'cal-item' + (r.status === 'done' ? ' cal-item-done' : '')}
+                      onClick={() => jumpToReminder(r.id)}
+                      title={r.original}
+                    >
+                      {!r.dateOnly && (
+                        <span className="cal-time">{formatTimeShort(new Date(r.when))}</span>
+                      )}
+                      <span className="cal-text">{r.original}</span>
+                    </button>
+                  ))}
+                  {items.length > 3 && (
+                    <div className="cal-more">+{items.length - 3} more</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const renderReminderRow = (r) => {
     const justAdded = justAddedIds.includes(r.id);
     return (
       <div
+        id={'reminder-' + r.id}
         className={'reminder' + (r.status === 'done' ? ' done' : '') + (justAdded ? ' just-added' : '')}
         key={r.id}
       >
@@ -463,8 +605,22 @@ export default function Home() {
         <div className="section-header">
           <h2>Reminders</h2>
           <div className="section-actions">
+            <div className="view-toggle" role="tablist" aria-label="View">
+              <button
+                role="tab"
+                aria-selected={viewMode === 'list'}
+                className={'view-toggle-btn' + (viewMode === 'list' ? ' active' : '')}
+                onClick={() => setViewMode('list')}
+              >List</button>
+              <button
+                role="tab"
+                aria-selected={viewMode === 'calendar'}
+                className={'view-toggle-btn' + (viewMode === 'calendar' ? ' active' : '')}
+                onClick={() => setViewMode('calendar')}
+              >Calendar</button>
+            </div>
             <span className="count">{mounted ? reminders.length : 0}</span>
-            {mounted && groups.done.length > 0 && (
+            {mounted && viewMode === 'list' && groups.done.length > 0 && (
               <button className="btn-link" onClick={() => setShowDone(v => !v)}>
                 {showDone ? 'Hide completed' : `Show ${groups.done.length} completed`}
               </button>
@@ -476,6 +632,8 @@ export default function Home() {
             <div className="empty">Loading…</div>
           ) : reminders.length === 0 ? (
             <div className="empty">Nothing saved yet. Jot a note above and press Capture.</div>
+          ) : viewMode === 'calendar' ? (
+            renderCalendar()
           ) : (
             <div className="reminder-groups">
               {pendingSections.map(s => s.items.length > 0 && (
