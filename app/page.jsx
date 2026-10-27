@@ -255,9 +255,14 @@ export default function Home() {
   const [justAddedIds, setJustAddedIds] = useState([]);
   const [showDone, setShowDone] = useState(false);
   const [viewMode, setViewMode] = useState('list');
-  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [selectedDay, setSelectedDay] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  });
   const [nowTick, setNowTick] = useState(() => new Date());
+  const [drag, setDrag] = useState(null); // {id, startY, originalMin, currentMin, moved}
   const textareaRef = useRef(null);
+  const dayBodyRef = useRef(null);
 
   // Load on mount
   useEffect(() => {
@@ -427,160 +432,243 @@ export default function Home() {
     }, 50);
   };
 
+  // --- Drag-to-reschedule in day view ---
+
+  const onEventPointerDown = (e, r) => {
+    if (r.status === 'done') { jumpToReminder(r.id); return; }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const dt = new Date(r.when);
+    const originalMin = dt.getHours() * 60 + dt.getMinutes();
+    setDrag({ id: r.id, startY: e.clientY, originalMin, currentMin: originalMin, moved: false });
+    // Capture so pointermove outside the element still fires
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) {}
+  };
+
+  const onEventPointerMove = (e) => {
+    if (!drag) return;
+    const body = dayBodyRef.current;
+    if (!body) return;
+    const bodyRect = body.getBoundingClientRect();
+    const totalMin = (WEEK_END_HOUR - WEEK_START_HOUR) * 60;
+    const deltaPx = e.clientY - drag.startY;
+    if (!drag.moved && Math.abs(deltaPx) < 6) return;
+    const deltaMin = (deltaPx / bodyRect.height) * totalMin;
+    let newMin = drag.originalMin + deltaMin;
+    newMin = Math.round(newMin / 15) * 15; // snap to 15-min
+    newMin = Math.max(WEEK_START_HOUR * 60, Math.min(WEEK_END_HOUR * 60, newMin));
+    setDrag(prev => prev ? { ...prev, currentMin: newMin, moved: true } : prev);
+  };
+
+  const onEventPointerUp = (e) => {
+    if (!drag) return;
+    if (drag.moved) {
+      const h = Math.floor(drag.currentMin / 60);
+      const m = drag.currentMin % 60;
+      const pad2 = (n) => String(n).padStart(2, '0');
+      updateReminder(drag.id, 'timeInput', pad2(h) + ':' + pad2(m));
+    } else {
+      jumpToReminder(drag.id);
+    }
+    setDrag(null);
+  };
+
+  const onEventPointerCancel = () => setDrag(null);
+
+  const prevDay = () => {
+    setSelectedDay(d => {
+      const n = new Date(d);
+      n.setDate(n.getDate() - 1);
+      return n;
+    });
+  };
+  const nextDay = () => {
+    setSelectedDay(d => {
+      const n = new Date(d);
+      n.setDate(n.getDate() + 1);
+      return n;
+    });
+  };
   const prevWeek = () => {
-    setWeekStart(prev => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() - 7);
-      return d;
+    setSelectedDay(d => {
+      const n = new Date(d);
+      n.setDate(n.getDate() - 7);
+      return n;
     });
   };
   const nextWeek = () => {
-    setWeekStart(prev => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + 7);
-      return d;
+    setSelectedDay(d => {
+      const n = new Date(d);
+      n.setDate(n.getDate() + 7);
+      return n;
     });
   };
   const jumpToToday = () => {
-    setWeekStart(startOfWeek(new Date()));
+    const d = new Date();
+    setSelectedDay(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
   };
 
   const renderCalendar = () => {
-    const days = weekDays(weekStart);
     const now = nowTick;
+    const sel = selectedDay;
+    const isSelToday = sameDay(sel, now);
+
+    // Compressed date strip: the Sunday-start week containing selectedDay
+    const stripStart = startOfWeek(sel);
+    const stripDays = weekDays(stripStart);
+
+    // Events for the selected day
+    const dayItems = reminders
+      .filter(r => r.when && sameDay(new Date(r.when), sel))
+      .sort((a, b) => new Date(a.when) - new Date(b.when));
+    const allDayItems = dayItems.filter(r => r.dateOnly);
+    const timedItems = dayItems.filter(r => !r.dateOnly);
+
     const noDateCount = reminders.filter(r => !r.when && r.status !== 'done').length;
-    const totalHours = WEEK_END_HOUR - WEEK_START_HOUR; // 15 rows (7..21)
+
     const hourList = [];
     for (let h = WEEK_START_HOUR; h <= WEEK_END_HOUR; h++) hourList.push(h);
-
-    // Bucket reminders per day column
-    const allDayByCol = Array.from({ length: 7 }, () => []);
-    const timedByCol = Array.from({ length: 7 }, () => []);
-    for (const r of reminders) {
-      if (!r.when) continue;
-      const d = new Date(r.when);
-      const dayIdx = days.findIndex(day => sameDay(day, d));
-      if (dayIdx === -1) continue;
-      if (r.dateOnly) {
-        allDayByCol[dayIdx].push(r);
-      } else {
-        timedByCol[dayIdx].push(r);
-      }
-    }
-    allDayByCol.forEach(c => c.sort((a, b) => new Date(a.when) - new Date(b.when)));
-    timedByCol.forEach(c => c.sort((a, b) => new Date(a.when) - new Date(b.when)));
-
-    const todayIdx = days.findIndex(day => sameDay(day, now));
-    const nowMinutes = (now.getHours() * 60) + now.getMinutes();
     const bodyStartMin = WEEK_START_HOUR * 60;
     const bodyEndMin = WEEK_END_HOUR * 60;
-    const nowInRange = todayIdx !== -1 && nowMinutes >= bodyStartMin && nowMinutes <= bodyEndMin;
+    const nowMinutes = (now.getHours() * 60) + now.getMinutes();
+    const nowInRange = isSelToday && nowMinutes >= bodyStartMin && nowMinutes <= bodyEndMin;
     const nowPct = nowInRange ? ((nowMinutes - bodyStartMin) / (bodyEndMin - bodyStartMin)) * 100 : 0;
 
-    const weekRange = days[0].getMonth() === days[6].getMonth()
-      ? days[0].toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
-      : days[0].toLocaleDateString('en-US', { month: 'short' }) + ' – ' +
-        days[6].toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    const monthLabel = sel.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
     return (
-      <div className="week">
-        <div className="week-nav">
-          <button className="icon-btn" onClick={prevWeek} aria-label="Previous week" title="Previous week">‹</button>
-          <h3 className="week-title">{weekRange}</h3>
-          <button className="icon-btn" onClick={nextWeek} aria-label="Next week" title="Next week">›</button>
+      <div className="dayv">
+        <div className="dayv-nav">
+          <h3 className="dayv-month">{monthLabel}</h3>
           <button className="btn-ghost today-btn" onClick={jumpToToday}>Today</button>
         </div>
+
+        <div className="dayv-strip-wrap">
+          <button className="icon-btn" onClick={prevWeek} aria-label="Previous week" title="Previous week">‹</button>
+          <div className="dayv-strip">
+            <div className="dayv-strip-row dayv-strip-labels">
+              {['S','M','T','W','T','F','S'].map((l, i) => (
+                <div key={i}>{l}</div>
+              ))}
+            </div>
+            <div className="dayv-strip-row dayv-strip-days">
+              {stripDays.map((d, i) => {
+                const isToday = sameDay(d, now);
+                const isSel = sameDay(d, sel);
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    className={
+                      'dayv-strip-day'
+                      + (isSel ? ' is-sel' : '')
+                      + (isToday ? ' is-today' : '')
+                    }
+                    onClick={() => setSelectedDay(d)}
+                    aria-label={d.toDateString()}
+                  >
+                    {d.getDate()}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <button className="icon-btn" onClick={nextWeek} aria-label="Next week" title="Next week">›</button>
+        </div>
+
+        <div className="dayv-dayrow">
+          <button className="icon-btn dayv-arrow" onClick={prevDay} aria-label="Previous day" title="Previous day">‹</button>
+          <div className="dayv-dayhead">
+            <span className={'dayv-dayhead-num' + (isSelToday ? ' is-today' : '')}>{sel.getDate()}</span>
+            <span className="dayv-dayhead-name">{sel.toLocaleDateString('en-US', { weekday: 'long' })}</span>
+          </div>
+          <button className="icon-btn dayv-arrow" onClick={nextDay} aria-label="Next day" title="Next day">›</button>
+        </div>
+
         {noDateCount > 0 && (
           <p className="calendar-note">
             {noDateCount} reminder{noDateCount === 1 ? '' : 's'} with no date — switch to List to see {noDateCount === 1 ? 'it' : 'them'}.
           </p>
         )}
 
-        <div className="week-scroll">
-          <div className="week-grid">
-            {/* Column headers */}
-            <div className="wk-corner" />
-            {days.map((d, i) => {
-              const isToday = sameDay(d, now);
-              return (
-                <div key={i} className={'wk-day-header' + (isToday ? ' is-today' : '')}>
-                  <div className="wk-dayname">{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                  <div className="wk-daynum">{d.getDate()}</div>
-                </div>
-              );
-            })}
+        <div className="dayv-allday">
+          <div className="dayv-allday-label">All day</div>
+          <div className="dayv-allday-items">
+            {allDayItems.length === 0 ? (
+              <span className="dayv-empty">—</span>
+            ) : allDayItems.map(r => (
+              <button
+                key={r.id}
+                type="button"
+                className={'dayv-event dayv-event-allday' + (r.status === 'done' ? ' is-done' : '')}
+                onClick={() => jumpToReminder(r.id)}
+                title={r.original}
+              >
+                <span className="dayv-event-text">{r.original}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
-            {/* All-day row */}
-            <div className="wk-row-label">All day</div>
-            {days.map((d, i) => (
-              <div key={'ad' + i} className={'wk-allday-cell' + (sameDay(d, now) ? ' is-today-col' : '')}>
-                {allDayByCol[i].map(r => (
-                  <button
-                    key={r.id}
-                    type="button"
-                    className={'wk-event wk-event-allday' + (r.status === 'done' ? ' is-done' : '')}
-                    onClick={() => jumpToReminder(r.id)}
-                    title={r.original}
-                  >
-                    <span className="wk-event-text">{r.original}</span>
-                  </button>
-                ))}
+        <div className="dayv-grid" style={{ ['--hours']: hourList.length }}>
+          <div className="dayv-hours">
+            {hourList.map(h => (
+              <div key={h} className="dayv-hour-row">
+                <span className="dayv-hour-label">{formatHourLabel(h)}</span>
               </div>
             ))}
-
-            {/* Hour rows */}
-            {hourList.map((h, hi) => (
-              <div className="wk-hour-row" key={'hr' + h} style={{ gridRow: hi + 3 }}>
-                <div className="wk-time-label">{formatHourLabel(h)}</div>
-              </div>
+          </div>
+          <div className="dayv-body" ref={dayBodyRef}>
+            {hourList.map((h, idx) => (
+              <div
+                key={'ln' + h}
+                className="dayv-hourline"
+                style={{ top: (idx / hourList.length) * 100 + '%' }}
+              />
             ))}
-
-            {/* Day body columns (one per day, spanning all hour rows) */}
-            {days.map((d, i) => {
-              const isTodayCol = sameDay(d, now);
+            {nowInRange && (
+              <div className="dayv-nowline" style={{ top: nowPct + '%' }}>
+                <span className="dayv-nowdot" />
+                <span className="dayv-nowlabel">{formatTimeShort(now)}</span>
+              </div>
+            )}
+            {timedItems.map(r => {
+              const dt = new Date(r.when);
+              const originalMinutes = dt.getHours() * 60 + dt.getMinutes();
+              const isDragging = drag && drag.id === r.id && drag.moved;
+              const minutes = isDragging ? drag.currentMin : originalMinutes;
+              const outOfRange = minutes < bodyStartMin || minutes > bodyEndMin;
+              if (outOfRange && !isDragging) return null;
+              const topPct = ((minutes - bodyStartMin) / (bodyEndMin - bodyStartMin)) * 100;
+              const dragH = Math.floor(minutes / 60);
+              const dragM = minutes % 60;
+              const dragTimeLabel = isDragging ? formatTimeShort(new Date(2000, 0, 1, dragH, dragM)) : null;
               return (
-                <div
-                  key={'body' + i}
-                  className={'wk-day-body' + (isTodayCol ? ' is-today-col' : '')}
-                  style={{ gridColumn: i + 2, gridRow: `3 / span ${hourList.length}` }}
+                <button
+                  key={r.id}
+                  type="button"
+                  className={'dayv-event' + (r.status === 'done' ? ' is-done' : '') + (isDragging ? ' is-dragging' : '')}
+                  style={{ top: topPct + '%' }}
+                  onPointerDown={(e) => onEventPointerDown(e, r)}
+                  onPointerMove={onEventPointerMove}
+                  onPointerUp={onEventPointerUp}
+                  onPointerCancel={onEventPointerCancel}
+                  title={r.original + ' (drag to reschedule, tap to open in list)'}
                 >
-                  {/* Hour grid lines inside the body */}
-                  {hourList.map((h, idx) => (
-                    <div
-                      key={'ln' + h}
-                      className="wk-hourline"
-                      style={{ top: (idx / hourList.length) * 100 + '%' }}
-                    />
-                  ))}
-                  {/* Now line */}
-                  {isTodayCol && nowInRange && (
-                    <div className="wk-nowline" style={{ top: nowPct + '%' }}>
-                      <span className="wk-nowdot" />
-                    </div>
-                  )}
-                  {/* Events */}
-                  {timedByCol[i].map(r => {
-                    const dt = new Date(r.when);
-                    const minutes = dt.getHours() * 60 + dt.getMinutes();
-                    if (minutes < bodyStartMin || minutes > bodyEndMin) return null;
-                    const topPct = ((minutes - bodyStartMin) / (bodyEndMin - bodyStartMin)) * 100;
-                    return (
-                      <button
-                        key={r.id}
-                        type="button"
-                        className={'wk-event wk-event-timed' + (r.status === 'done' ? ' is-done' : '')}
-                        style={{ top: topPct + '%' }}
-                        onClick={() => jumpToReminder(r.id)}
-                        title={r.original}
-                      >
-                        <span className="wk-event-time">{formatTimeShort(dt)}</span>
-                        <span className="wk-event-text">{r.original}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                  <span className="dayv-event-time">{dragTimeLabel || formatTimeShort(dt)}</span>
+                  <span className="dayv-event-text">{r.original}</span>
+                </button>
               );
             })}
+            {/* Note out-of-range events (early morning / late night) */}
+            {timedItems.some(r => {
+              const dt = new Date(r.when);
+              const m = dt.getHours() * 60 + dt.getMinutes();
+              return m < bodyStartMin || m > bodyEndMin;
+            }) && (
+              <div className="dayv-outofrange">
+                Some reminders fall outside {formatHourLabel(WEEK_START_HOUR)}–{formatHourLabel(WEEK_END_HOUR)} — switch to List to see them.
+              </div>
+            )}
           </div>
         </div>
       </div>
