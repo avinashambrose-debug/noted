@@ -423,22 +423,22 @@ button { font-family: inherit; cursor: pointer; }
 }
 .view-toggle-btn.active:hover { color: var(--btn-text); }
 
-/* ---------- Week calendar ---------- */
+/* ---------- Day view calendar ---------- */
 
-.week {
+.dayv {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
-.week-nav {
+.dayv-nav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
-.week-title {
+.dayv-month {
   font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 500;
   margin: 0;
   letter-spacing: -0.02em;
@@ -447,7 +447,6 @@ button { font-family: inherit; cursor: pointer; }
   min-width: 0;
 }
 .today-btn {
-  margin-left: auto;
   font-size: 12px;
   padding: 4px 10px;
 }
@@ -462,118 +461,155 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: 4px;
 }
 
-/* Scroll wrapper allows horizontal overflow on narrow screens */
-.week-scroll {
-  overflow-x: auto;
+/* ---- Compressed date strip ---- */
+
+.dayv-strip-wrap {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px;
+  align-items: center;
+  gap: 2px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
+  padding: 6px 4px 8px;
 }
-
-.week-grid {
+.dayv-strip { min-width: 0; }
+.dayv-strip-row {
   display: grid;
-  grid-template-columns: 56px repeat(7, minmax(80px, 1fr));
-  grid-auto-rows: auto;
-  min-width: 100%;
-  position: relative;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
 }
-
-/* Row 1: headers */
-.wk-corner {
-  grid-row: 1;
-  grid-column: 1;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-.wk-day-header {
-  grid-row: 1;
-  padding: 8px 6px 6px;
+.dayv-strip-labels > div {
   text-align: center;
-  border-bottom: 1px solid var(--border);
-  border-left: 1px solid var(--border);
-  background: var(--surface);
-  position: sticky;
-  top: 0;
-  z-index: 2;
-}
-.wk-dayname {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-subtle);
-  margin-bottom: 2px;
+  padding: 4px 0 2px;
 }
-.wk-daynum {
-  font-size: 18px;
+.dayv-strip-day {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  max-height: 40px;
+  font-family: inherit;
+  font-size: 14px;
   font-weight: 500;
   color: var(--ink);
+  cursor: pointer;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  border-radius: 50%;
+  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
 }
-.wk-day-header.is-today .wk-dayname { color: var(--accent-ink); }
-.wk-day-header.is-today .wk-daynum {
+.dayv-strip-day:hover { background: var(--surface-raised); }
+.dayv-strip-day.is-today:not(.is-sel) { color: var(--accent-ink); font-weight: 600; }
+.dayv-strip-day.is-sel {
   background: var(--accent);
   color: var(--btn-text);
-  border-radius: 14px;
-  padding: 4px 9px;
-  display: inline-block;
+}
+.dayv-strip-day.is-today.is-sel { background: var(--accent); color: var(--btn-text); }
+
+/* ---- Selected day header ---- */
+
+.dayv-dayrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.dayv-arrow { color: var(--ink-muted); }
+
+.dayv-dayhead {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: center;
+}
+.dayv-dayhead-num {
+  font-size: 22px;
   font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.dayv-dayhead-num.is-today { color: var(--accent-ink); }
+.dayv-dayhead-name {
+  font-size: 14px;
+  color: var(--ink-muted);
 }
 
-/* Row 2: all-day */
-.wk-row-label {
-  grid-row: 2;
-  grid-column: 1;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-subtle);
-  padding: 6px 6px;
-  border-right: 1px solid var(--border);
+/* ---- All day row ---- */
+
+.dayv-allday {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  text-align: right;
-  background: var(--surface);
+  min-height: 44px;
+  align-items: flex-start;
 }
-.wk-allday-cell {
-  grid-row: 2;
-  min-height: 32px;
-  padding: 3px 2px;
-  border-left: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
+.dayv-allday-label {
+  font-size: 11px;
+  color: var(--ink-subtle);
+  text-align: right;
+  padding-top: 6px;
+  letter-spacing: 0.02em;
+}
+.dayv-allday-items {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
 }
-.wk-allday-cell.is-today-col { background: var(--accent-soft); }
+.dayv-empty {
+  color: var(--ink-subtle);
+  font-size: 13px;
+  padding-top: 6px;
+}
 
-/* Hour rows (just for the hour label column); day bodies span all rows */
-.wk-hour-row {
-  grid-column: 1;
-  height: 48px;
-  border-bottom: 1px dashed var(--border);
-  border-right: 1px solid var(--border);
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  padding: 2px 6px 0 0;
+/* ---- Hour grid ---- */
+
+.dayv-grid {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 0;
+  position: relative;
 }
-.wk-time-label {
-  font-size: 10px;
+.dayv-hours {
+  display: flex;
+  flex-direction: column;
+}
+.dayv-hour-row {
+  height: 52px;
+  text-align: right;
+  padding-right: 10px;
+  padding-top: 2px;
+}
+.dayv-hour-label {
+  font-size: 11px;
   color: var(--ink-subtle);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  background: var(--bg);
+  padding: 0 2px;
+  display: inline-block;
 }
-
-.wk-day-body {
+.dayv-body {
   position: relative;
+  min-height: calc(var(--hours, 16) * 52px);
   border-left: 1px solid var(--border);
-  min-height: 48px; /* overridden via grid-row span */
 }
-.wk-day-body.is-today-col { background: var(--accent-soft); }
 
-.wk-hourline {
+.dayv-hourline {
   position: absolute;
   left: 0;
   right: 0;
@@ -581,9 +617,9 @@ button { font-family: inherit; cursor: pointer; }
   background: var(--border);
   pointer-events: none;
 }
-.wk-hourline:first-child { display: none; }
+.dayv-hourline:first-child { display: none; }
 
-.wk-nowline {
+.dayv-nowline {
   position: absolute;
   left: 0;
   right: 0;
@@ -592,66 +628,111 @@ button { font-family: inherit; cursor: pointer; }
   z-index: 5;
   pointer-events: none;
 }
-.wk-nowdot {
+.dayv-nowdot {
   position: absolute;
-  left: -4px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
+  left: -5px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--warning);
 }
-
-.wk-event {
+.dayv-nowlabel {
   position: absolute;
-  left: 2px;
-  right: 2px;
-  background: var(--accent);
-  color: var(--btn-text);
-  border: 0;
+  left: -56px;
+  top: -8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--warning);
+  background: var(--bg);
+  padding: 1px 4px;
   border-radius: 3px;
-  padding: 2px 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Event blocks (Outlook-inspired) ---- */
+
+.dayv-event {
+  position: absolute;
+  left: 6px;
+  right: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border: 0;
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+  padding: 7px 10px 7px 11px;
   font-family: inherit;
-  font-size: 11px;
-  line-height: 1.3;
-  cursor: pointer;
+  font-size: 13px;
   text-align: left;
+  cursor: grab;
+  min-height: 42px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  min-height: 22px;
+  gap: 2px;
   z-index: 3;
-  transition: filter 0.1s;
+  transition: filter 0.1s, box-shadow 0.15s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  touch-action: none; /* let pointer events own vertical movement */
+  user-select: none;
 }
-.wk-event:hover { filter: brightness(1.08); }
-.wk-event.is-done {
+.dayv-event:hover { filter: brightness(0.97); }
+.dayv-event.is-dragging {
+  cursor: grabbing;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.18);
+  z-index: 10;
+  filter: none;
+  transition: none;
+}
+.dayv-event.is-done {
   background: var(--surface-raised);
   color: var(--ink-subtle);
+  border-left-color: var(--border-strong);
   text-decoration: line-through;
+  box-shadow: none;
+  cursor: pointer;
 }
-.wk-event-time {
-  font-variant-numeric: tabular-nums;
+.dayv-event-time {
+  font-size: 11px;
   font-weight: 500;
-  font-size: 10px;
-  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
-.wk-event-text {
+.dayv-event-text {
+  font-size: 13px;
+  line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
-.wk-event-allday {
+.dayv-event-allday {
   position: static;
   left: auto;
   right: auto;
+  min-height: 36px;
+}
+
+.dayv-outofrange {
+  position: absolute;
+  bottom: 4px;
+  left: 10px;
+  right: 10px;
+  font-size: 11px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
 @media (max-width: 560px) {
-  .week-grid { grid-template-columns: 44px repeat(7, minmax(72px, 1fr)); }
-  .wk-time-label { font-size: 9px; }
-  .wk-daynum { font-size: 15px; }
-  .week-title { font-size: 17px; }
-  .wk-event-time { display: none; }
+  .dayv-month { font-size: 20px; }
+  .dayv-strip-day { font-size: 13px; max-height: 36px; }
+  .dayv-grid { grid-template-columns: 50px 1fr; }
+  .dayv-allday { grid-template-columns: 50px 1fr; }
+  .dayv-event { font-size: 12px; padding: 6px 8px 6px 10px; }
+  .dayv-nowlabel { left: -46px; }
 }
 
 .reminder {
