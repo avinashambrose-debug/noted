@@ -204,35 +204,31 @@ function groupReminders(list) {
   return groups;
 }
 
-// Build the 6-week grid of Date objects for a given month, starting Sunday
-function getCalendarCells(monthDate) {
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const startWeekday = firstDay.getDay();
-  const startDate = new Date(year, month, 1 - startWeekday);
-  const cells = [];
-  for (let i = 0; i < 42; i++) {
-    const d = new Date(startDate);
-    d.setDate(startDate.getDate() + i);
-    cells.push(d);
-  }
-  // Trim the trailing all-next-month row if present
-  if (cells[35] && cells[35].getMonth() !== month) cells.splice(35, 7);
-  return cells;
+// --- Week-view helpers ---
+const WEEK_START_HOUR = 7;   // first hour row shown
+const WEEK_END_HOUR = 22;    // last hour row shown (exclusive upper bound = row for 10pm)
+
+function startOfWeek(date) {
+  // Sunday-start week
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - d.getDay());
+  return d;
 }
 
-function groupRemindersByDay(list) {
-  const map = new Map();
-  for (const r of list) {
-    if (!r.when) continue;
-    const d = new Date(r.when);
-    const key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
-    if (!map.has(key)) map.set(key, []);
-    map.get(key).push(r);
+function weekDays(sunday) {
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(sunday);
+    d.setDate(sunday.getDate() + i);
+    days.push(d);
   }
-  for (const items of map.values()) items.sort((a, b) => new Date(a.when) - new Date(b.when));
-  return map;
+  return days;
+}
+
+function sameDay(a, b) {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
 }
 
 function formatTimeShort(d) {
@@ -241,6 +237,13 @@ function formatTimeShort(d) {
   const period = h >= 12 ? 'p' : 'a';
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return h12 + (m ? ':' + String(m).padStart(2, '0') : '') + period;
+}
+
+function formatHourLabel(h) {
+  if (h === 0) return '12 AM';
+  if (h === 12) return '12 PM';
+  if (h < 12) return h + ' AM';
+  return (h - 12) + ' PM';
 }
 
 export default function Home() {
@@ -252,10 +255,8 @@ export default function Home() {
   const [justAddedIds, setJustAddedIds] = useState([]);
   const [showDone, setShowDone] = useState(false);
   const [viewMode, setViewMode] = useState('list');
-  const [calendarMonth, setCalendarMonth] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [nowTick, setNowTick] = useState(() => new Date());
   const textareaRef = useRef(null);
 
   // Load on mount
@@ -301,6 +302,13 @@ export default function Home() {
     if (!mounted) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(reminders)); } catch (e) {}
   }, [reminders, mounted]);
+
+  // Tick the "now" indicator in calendar view every minute
+  useEffect(() => {
+    if (viewMode !== 'calendar') return;
+    const id = setInterval(() => setNowTick(new Date()), 60000);
+    return () => clearInterval(id);
+  }, [viewMode]);
 
   const updateThemeLabel = () => {
     const current = document.documentElement.getAttribute('data-theme');
@@ -419,33 +427,67 @@ export default function Home() {
     }, 50);
   };
 
-  const prevMonth = () => {
-    setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  const prevWeek = () => {
+    setWeekStart(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() - 7);
+      return d;
+    });
   };
-  const nextMonth = () => {
-    setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  const nextWeek = () => {
+    setWeekStart(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + 7);
+      return d;
+    });
   };
   const jumpToToday = () => {
-    const d = new Date();
-    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    setWeekStart(startOfWeek(new Date()));
   };
 
   const renderCalendar = () => {
-    const cells = getCalendarCells(calendarMonth);
-    const dayMap = groupRemindersByDay(reminders);
-    const now = new Date();
-    const todayKey = now.getFullYear() + '-' + now.getMonth() + '-' + now.getDate();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const days = weekDays(weekStart);
+    const now = nowTick;
     const noDateCount = reminders.filter(r => !r.when && r.status !== 'done').length;
+    const totalHours = WEEK_END_HOUR - WEEK_START_HOUR; // 15 rows (7..21)
+    const hourList = [];
+    for (let h = WEEK_START_HOUR; h <= WEEK_END_HOUR; h++) hourList.push(h);
+
+    // Bucket reminders per day column
+    const allDayByCol = Array.from({ length: 7 }, () => []);
+    const timedByCol = Array.from({ length: 7 }, () => []);
+    for (const r of reminders) {
+      if (!r.when) continue;
+      const d = new Date(r.when);
+      const dayIdx = days.findIndex(day => sameDay(day, d));
+      if (dayIdx === -1) continue;
+      if (r.dateOnly) {
+        allDayByCol[dayIdx].push(r);
+      } else {
+        timedByCol[dayIdx].push(r);
+      }
+    }
+    allDayByCol.forEach(c => c.sort((a, b) => new Date(a.when) - new Date(b.when)));
+    timedByCol.forEach(c => c.sort((a, b) => new Date(a.when) - new Date(b.when)));
+
+    const todayIdx = days.findIndex(day => sameDay(day, now));
+    const nowMinutes = (now.getHours() * 60) + now.getMinutes();
+    const bodyStartMin = WEEK_START_HOUR * 60;
+    const bodyEndMin = WEEK_END_HOUR * 60;
+    const nowInRange = todayIdx !== -1 && nowMinutes >= bodyStartMin && nowMinutes <= bodyEndMin;
+    const nowPct = nowInRange ? ((nowMinutes - bodyStartMin) / (bodyEndMin - bodyStartMin)) * 100 : 0;
+
+    const weekRange = days[0].getMonth() === days[6].getMonth()
+      ? days[0].toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+      : days[0].toLocaleDateString('en-US', { month: 'short' }) + ' – ' +
+        days[6].toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
     return (
-      <div className="calendar">
-        <div className="calendar-nav">
-          <button className="icon-btn" onClick={prevMonth} aria-label="Previous month" title="Previous month">‹</button>
-          <h3 className="calendar-title">
-            {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-          </h3>
-          <button className="icon-btn" onClick={nextMonth} aria-label="Next month" title="Next month">›</button>
+      <div className="week">
+        <div className="week-nav">
+          <button className="icon-btn" onClick={prevWeek} aria-label="Previous week" title="Previous week">‹</button>
+          <h3 className="week-title">{weekRange}</h3>
+          <button className="icon-btn" onClick={nextWeek} aria-label="Next week" title="Next week">›</button>
           <button className="btn-ghost today-btn" onClick={jumpToToday}>Today</button>
         </div>
         {noDateCount > 0 && (
@@ -453,52 +495,93 @@ export default function Home() {
             {noDateCount} reminder{noDateCount === 1 ? '' : 's'} with no date — switch to List to see {noDateCount === 1 ? 'it' : 'them'}.
           </p>
         )}
-        <div className="calendar-weekdays">
-          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-            <div key={d} className="calendar-weekday">{d}</div>
-          ))}
-        </div>
-        <div className="calendar-grid">
-          {cells.map(d => {
-            const key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
-            const items = dayMap.get(key) || [];
-            const inMonth = d.getMonth() === calendarMonth.getMonth();
-            const isToday = key === todayKey;
-            const isPast = d < todayStart;
-            const hasOverduePending = isPast && items.some(r => r.status === 'pending');
-            return (
-              <div
-                key={key}
-                className={
-                  'cal-cell'
-                  + (inMonth ? '' : ' cal-out')
-                  + (isToday ? ' cal-today' : '')
-                  + (hasOverduePending ? ' cal-overdue' : '')
-                }
-              >
-                <div className="cal-day">{d.getDate()}</div>
-                <div className="cal-items">
-                  {items.slice(0, 3).map(r => (
-                    <button
-                      key={r.id}
-                      type="button"
-                      className={'cal-item' + (r.status === 'done' ? ' cal-item-done' : '')}
-                      onClick={() => jumpToReminder(r.id)}
-                      title={r.original}
-                    >
-                      {!r.dateOnly && (
-                        <span className="cal-time">{formatTimeShort(new Date(r.when))}</span>
-                      )}
-                      <span className="cal-text">{r.original}</span>
-                    </button>
-                  ))}
-                  {items.length > 3 && (
-                    <div className="cal-more">+{items.length - 3} more</div>
-                  )}
+
+        <div className="week-scroll">
+          <div className="week-grid">
+            {/* Column headers */}
+            <div className="wk-corner" />
+            {days.map((d, i) => {
+              const isToday = sameDay(d, now);
+              return (
+                <div key={i} className={'wk-day-header' + (isToday ? ' is-today' : '')}>
+                  <div className="wk-dayname">{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                  <div className="wk-daynum">{d.getDate()}</div>
                 </div>
+              );
+            })}
+
+            {/* All-day row */}
+            <div className="wk-row-label">All day</div>
+            {days.map((d, i) => (
+              <div key={'ad' + i} className={'wk-allday-cell' + (sameDay(d, now) ? ' is-today-col' : '')}>
+                {allDayByCol[i].map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={'wk-event wk-event-allday' + (r.status === 'done' ? ' is-done' : '')}
+                    onClick={() => jumpToReminder(r.id)}
+                    title={r.original}
+                  >
+                    <span className="wk-event-text">{r.original}</span>
+                  </button>
+                ))}
               </div>
-            );
-          })}
+            ))}
+
+            {/* Hour rows */}
+            {hourList.map((h, hi) => (
+              <div className="wk-hour-row" key={'hr' + h} style={{ gridRow: hi + 3 }}>
+                <div className="wk-time-label">{formatHourLabel(h)}</div>
+              </div>
+            ))}
+
+            {/* Day body columns (one per day, spanning all hour rows) */}
+            {days.map((d, i) => {
+              const isTodayCol = sameDay(d, now);
+              return (
+                <div
+                  key={'body' + i}
+                  className={'wk-day-body' + (isTodayCol ? ' is-today-col' : '')}
+                  style={{ gridColumn: i + 2, gridRow: `3 / span ${hourList.length}` }}
+                >
+                  {/* Hour grid lines inside the body */}
+                  {hourList.map((h, idx) => (
+                    <div
+                      key={'ln' + h}
+                      className="wk-hourline"
+                      style={{ top: (idx / hourList.length) * 100 + '%' }}
+                    />
+                  ))}
+                  {/* Now line */}
+                  {isTodayCol && nowInRange && (
+                    <div className="wk-nowline" style={{ top: nowPct + '%' }}>
+                      <span className="wk-nowdot" />
+                    </div>
+                  )}
+                  {/* Events */}
+                  {timedByCol[i].map(r => {
+                    const dt = new Date(r.when);
+                    const minutes = dt.getHours() * 60 + dt.getMinutes();
+                    if (minutes < bodyStartMin || minutes > bodyEndMin) return null;
+                    const topPct = ((minutes - bodyStartMin) / (bodyEndMin - bodyStartMin)) * 100;
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        className={'wk-event wk-event-timed' + (r.status === 'done' ? ' is-done' : '')}
+                        style={{ top: topPct + '%' }}
+                        onClick={() => jumpToReminder(r.id)}
+                        title={r.original}
+                      >
+                        <span className="wk-event-time">{formatTimeShort(dt)}</span>
+                        <span className="wk-event-text">{r.original}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
