@@ -261,6 +261,8 @@ export default function Home() {
   });
   const [nowTick, setNowTick] = useState(() => new Date());
   const [drag, setDrag] = useState(null); // {id, startY, originalMin, currentMin, moved}
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [parseError, setParseError] = useState(null);
   const textareaRef = useRef(null);
   const dayBodyRef = useRef(null);
 
@@ -334,31 +336,78 @@ export default function Home() {
 
   const pad = (n) => String(n).padStart(2, '0');
 
-  const capture = useCallback(() => {
-    const text = noteInput.trim();
-    if (!text) return;
-    const items = splitNote(text);
-    const newReminders = items.map((item, idx) => {
-      const p = parseNote(item);
-      const d = p.when;
+  // Convert a parsed item (from API or local regex) into a reminder record
+  const buildReminder = (item, idx) => {
+    const d = item.when ? new Date(item.when) : null;
+    const validDate = d && !isNaN(d.getTime());
+    return {
+      id: 'r-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 5),
+      original: String(item.original || '').trim(),
+      action: item.action || null,
+      person: item.person || null,
+      when: validDate ? d.toISOString() : null,
+      dateInput: validDate ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '',
+      timeInput: (validDate && !item.dateOnly) ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '',
+      dateOnly: !!item.dateOnly,
+      recurrence: item.recurrence || null,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+  };
+
+  // Local regex fallback — used only when the API call fails
+  const regexParseItems = (text) => {
+    return splitNote(text).map(chunk => {
+      const p = parseNote(chunk);
       return {
-        id: 'r-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 5),
         original: p.original,
         action: p.action,
         person: p.person,
-        when: d ? d.toISOString() : null,
-        dateInput: d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '',
-        timeInput: (d && !p.dateOnly) ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '',
+        when: p.when ? p.when.toISOString() : null,
         dateOnly: !!p.dateOnly,
         recurrence: p.recurrence,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
       };
     });
+  };
+
+  const capture = useCallback(async () => {
+    const text = noteInput.trim();
+    if (!text) return;
+
+    setIsCapturing(true);
+    setParseError(null);
+
+    let items = null;
+
+    // Try the AI parser first
+    try {
+      const resp = await fetch('/api/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data?.error || `Parser failed (HTTP ${resp.status})`);
+      }
+      if (!Array.isArray(data.items) || data.items.length === 0) {
+        throw new Error('Parser returned no items');
+      }
+      items = data.items;
+    } catch (err) {
+      console.warn('AI parser failed, falling back to regex:', err);
+      setParseError(`AI parser unavailable (${err.message}). Used basic parser — check the dates below.`);
+      items = regexParseItems(text);
+    }
+
+    const newReminders = items.map((item, idx) => buildReminder(item, idx));
     setReminders(prev => [...prev, ...newReminders]);
     setJustAddedIds(newReminders.map(r => r.id));
     setNoteInput('');
-    // Fade the "just saved" highlight after a moment
+    setIsCapturing(false);
     setTimeout(() => setJustAddedIds([]), 2500);
   }, [noteInput]);
 
@@ -759,6 +808,7 @@ export default function Home() {
             onKeyDown={handleKey}
             placeholder="e.g. Call the dentist tomorrow 10am. Send monthly report every month-end."
             aria-label="Write a note"
+            disabled={isCapturing}
           />
         </div>
         <div className="composer-footer">
@@ -768,8 +818,25 @@ export default function Home() {
             <kbd>Enter</kbd>
             <span>to capture</span>
           </div>
-          <button className="btn-primary" onClick={capture}>Capture</button>
+          <button
+            className="btn-primary"
+            onClick={capture}
+            disabled={isCapturing || !noteInput.trim()}
+          >
+            {isCapturing ? 'Thinking…' : 'Capture'}
+          </button>
         </div>
+        {parseError && (
+          <div className="parse-error" role="alert">
+            {parseError}
+            <button
+              type="button"
+              className="parse-error-dismiss"
+              onClick={() => setParseError(null)}
+              aria-label="Dismiss"
+            >×</button>
+          </div>
+        )}
       </section>
 
       <section>
@@ -846,7 +913,7 @@ export default function Home() {
         </div>
       </section>
 
-      <p className="parser-note">v0.1 · regex parser · reminders live in this browser only</p>
+      <p className="parser-note">v0.2 · AI parser (Claude Haiku) · reminders live in this browser only</p>
     </div>
   );
 }
